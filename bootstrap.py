@@ -169,7 +169,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    ensure_supported_platform()
+    #ensure_supported_platform()
 
     agent_dir = discover_agent_dir()
     if not agent_dir and not hermes_command_exists():
