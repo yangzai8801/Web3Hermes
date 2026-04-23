@@ -19,7 +19,10 @@ from api.helpers import j
 from api.routes import handle_get, handle_post
 from api.startup import auto_install_agent_deps, fix_credential_permissions
 
-
+# http.server.ThreadingHTTPServer - 多线程 HTTP 服务器
+# 每个请求会在新线程中处理，不是线程池复用
+# 优点：简单直接，请求隔离性好
+# 缺点：高并发时会创建大量线程，可能导致资源耗尽
 class QuietHTTPServer(ThreadingHTTPServer):
     """Custom HTTP server that silently handles common network errors."""
     
@@ -41,25 +44,44 @@ class QuietHTTPServer(ThreadingHTTPServer):
         # For other errors, use default logging
         super().handle_error(request, client_address)
 
-
+# http.server.BaseHTTPRequestHandler - HTTP 请求处理器
+# 内部方法都是 web服务回调处理
+# 每次请求对应一个Handler实例
 class Handler(BaseHTTPRequestHandler):
     timeout = 30  # seconds — kills idle/incomplete connections to prevent thread exhaustion
     server_version = 'HermesWebUI/0.50.38'
-    def log_message(self, fmt, *args): pass  # suppress default Apache-style log
 
+    # 调用时机：父类 BaseHTTPRequestHandler 在需要输出日志时自动调用
+    # 默认行为：向 stderr 输出 Apache 格式的日志
+    def log_message(self, fmt, *args):
+        print(fmt % args, flush=True)
+        pass  # suppress default Apache-style log
+
+    # 调用时机：请求处理完毕后，父类自动调用
+    # 参数：
+    # code: HTTP 状态码（如 200, 404）
+    # size: 响应字节数
+    # 你的重写：改为输出 JSON 格式的结构化日志，包含耗时统计
     def log_request(self, code: str='-', size: str='-') -> None:
         """Structured JSON logs for each request."""
         import json as _json
         duration_ms = round((time.time() - getattr(self, '_req_t0', time.time())) * 1000, 1)
         record = _json.dumps({
+            'handler': id(self),
             'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             'method': self.command or '-',
             'path': self.path or '-',
             'status': int(code) if str(code).isdigit() else code,
             'ms': duration_ms,
+            'size': size,
         })
-        print(f'[webui] {record}', flush=True)
+        # 打印加入当前线程
+        import threading
+        print(f'[webui][{threading.current_thread().name}] {record}', flush=True)
+        # print(f'[webui]{} {record}', flush=True)
 
+    # 调用时机：当客户端发送 GET /path HTTP/1.1 请求时，服务器自动调用
+    # 触发条件：HTTP 请求方法为 GET
     def do_GET(self) -> None:
         self._req_t0 = time.time()
         try:
@@ -72,6 +94,8 @@ class Handler(BaseHTTPRequestHandler):
             print(f'[webui] ERROR {self.command} {self.path}\n' + traceback.format_exc(), flush=True)
             return j(self, {'error': 'Internal server error'}, status=500)
 
+    # 调用时机：当客户端发送 POST /path HTTP/1.1 请求时，服务器自动调用
+    # 触发条件：HTTP 请求方法为 POST
     def do_POST(self) -> None:
         self._req_t0 = time.time()
         try:
@@ -94,7 +118,9 @@ def main() -> None:
     fix_credential_permissions()
 
     within_container = False
-    # Check for the "/.within_container" file to determine if we're running inside a container; this file is created in the Dockerfile
+    # Check for the "/.within_container" file to determine if we're running inside a container;
+    # this file is created in the Dockerfile
+    # 这个文件是在 Docker 镜像构建时由 Dockerfile 创建的，作为容器环境的标识。
     try:
         with open('/.within_container', 'r') as f:
             within_container = True

@@ -1010,8 +1010,20 @@ function resolvePreferredLocale(primary, fallback) {
  */
 function t(key, ...args) {
   const val = _locale[key] ?? LOCALES.en[key];
+  console.log(typeof val)
   if (val === undefined) return key;  // final fallback: return key itself
-  return typeof val === 'function' ? val(...args) : val;
+  // 原始代码
+  //return typeof val === 'function' ? val(...args) : val;
+  // 修复代码 liuy
+  // 前端有些地方调用t方法的错误，例如有好几种方式:
+  // t('show_other_profiles')(otherProfileCount)
+  // t('n_messages', s.message_count)
+  // t('hidden_other_profiles')
+  if( typeof val === 'function' ) {
+     // 判断args是否有值, 如果有值，则调用，否则返回val本身
+     return args.length ? val(...args) : val;
+  }
+  return val;
 }
 
 /**

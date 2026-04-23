@@ -146,6 +146,7 @@ def new_session(workspace=None, model=None):
 def all_sessions():
     # Phase C: try index first for O(1) read; fall back to full scan
     if SESSION_INDEX_FILE.exists():
+        # _index.json 文件存在
         try:
             index = json.loads(SESSION_INDEX_FILE.read_text(encoding='utf-8'))
             # Overlay any in-memory sessions that may be newer than the index
@@ -153,6 +154,7 @@ def all_sessions():
             with LOCK:
                 for s in SESSIONS.values():
                     index_map[s.session_id] = s.compact()
+            # 排序：置顶 pinned first, updated_at desc
             result = sorted(index_map.values(), key=lambda s: (s.get('pinned', False), s['updated_at']), reverse=True)
             # Hide empty Untitled sessions from the UI (created by tests, page refreshes, etc.)
             result = [s for s in result if not (s.get('title','Untitled')=='Untitled' and s.get('message_count',0)==0)]
@@ -165,6 +167,8 @@ def all_sessions():
         except Exception:
             logger.debug("Failed to load session index, falling back to full scan")
     # Full scan fallback
+    # _index.json 文件不存在，那么就扫描 sessions 目录下的 json 文件
+    # 默认目录： C:\Users\PC\.hermes\webui\sessions
     out = []
     for p in SESSION_DIR.glob('*.json'):
         if p.name.startswith('_'): continue
@@ -175,6 +179,7 @@ def all_sessions():
             logger.debug("Failed to load session from %s", p)
     for s in SESSIONS.values():
         if all(s.session_id != x.session_id for x in out): out.append(s)
+    # 排序：置顶 pinned first, updated_at desc
     out.sort(key=lambda s: (getattr(s, 'pinned', False), s.updated_at), reverse=True)
     result = [s.compact() for s in out if not (s.title=='Untitled' and len(s.messages)==0)]
     for s in result:

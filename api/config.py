@@ -155,6 +155,9 @@ PYTHON_EXE = _discover_python(_AGENT_DIR)
 # and Hermes-specific modules (run_agent, hermes/, etc.) still
 # resolve because they do not exist in site-packages.
 
+# by liuy 动态加入 Hermes Agent的源码项目到sys path，这样可以使用 hermes Agent的包，
+# 例如： from tools.mcp_tool import discover_mcp_tools
+# 源码项目本地是： D:\workspace_python\hermes-agent
 if _AGENT_DIR is not None:
     if str(_AGENT_DIR) not in sys.path:
         sys.path.append(str(_AGENT_DIR))
